@@ -54,8 +54,8 @@ Submit the real push output including the digest.
 File: `v2/guestbook/public/index.html`
 
 ```html
-<title>Guestbook – v2</title>
-<h1>Guestbook – v2</h1>
+<title>Guestbook - v2</title>
+<h1>Guestbook - v2</h1>
 ```
 
 ## Rolling update and rollback
