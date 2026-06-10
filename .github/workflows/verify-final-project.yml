@@ -1,0 +1,79 @@
+name: Verify Guestbook Final Project
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out fork
+        uses: actions/checkout@v4
+
+      - name: Build v1 and v2 images
+        run: |
+          docker build -t guestbook:v1 v1/guestbook
+          docker build -t guestbook:v2 v2/guestbook
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: guestbook
+
+      - name: Load images
+        run: |
+          kind load docker-image guestbook:v1 --name guestbook
+          kind load docker-image guestbook:v2 --name guestbook
+
+      - name: Install metrics server
+        run: |
+          kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+          kubectl patch deployment metrics-server -n kube-system --type=json \
+            -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]'
+          kubectl rollout status deployment/metrics-server -n kube-system --timeout=180s
+
+      - name: Apply Guestbook deployment
+        run: |
+          sed 's#us.icr.io/YOUR_NAMESPACE/guestbook:v1#guestbook:v1#' v1/guestbook/deployment.yml > /tmp/deployment.yml
+          sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/' /tmp/deployment.yml
+          kubectl apply -f /tmp/deployment.yml | tee 07-deployment-apply
+          kubectl apply -f v1/guestbook/service.yml
+          kubectl rollout status deployment/guestbook --timeout=180s
+
+      - name: Create HPA with zero current replicas
+        run: |
+          kubectl apply -f v1/guestbook/hpa.yml
+          kubectl get hpa guestbook | tee 04-hpa-created
+
+      - name: Confirm increased replicas
+        run: |
+          kubectl patch hpa guestbook --type=merge -p '{"spec":{"minReplicas":3}}'
+          kubectl wait --for=jsonpath='{.status.currentReplicas}'=3 hpa/guestbook --timeout=180s
+          kubectl get hpa guestbook | tee 05-increased-replicas
+
+      - name: Perform rolling updates
+        run: |
+          kubectl set image deployment/guestbook guestbook=guestbook:v2 --record
+          kubectl rollout status deployment/guestbook --timeout=180s
+          kubectl set resources deployment/guestbook --requests=cpu=5m --limits=cpu=50m --record
+          kubectl rollout status deployment/guestbook --timeout=180s
+          kubectl rollout history deployment/guestbook | tee 09-rollout-history
+
+      - name: Roll back and list ReplicaSets
+        run: |
+          kubectl rollout undo deployment/guestbook
+          kubectl rollout status deployment/guestbook --timeout=180s
+          kubectl get rs | tee 10-replicasets-after-rollback
+
+      - name: Upload terminal evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: guestbook-terminal-evidence
+          path: |
+            04-hpa-created
+            05-increased-replicas
+            07-deployment-apply
+            09-rollout-history
+            10-replicasets-after-rollback
