@@ -54,16 +54,19 @@ Submit the real push output including the digest.
 File: `v2/guestbook/public/index.html`
 
 ```html
-<title>Guestbook - v2</title>
-<h1>Guestbook - v2</h1>
+<title>Guestbook – v2</title>
+<h1>Guestbook – v2</h1>
 ```
 
 ## Rolling update and rollback
 
 ```sh
 kubectl set image deployment/guestbook guestbook=us.icr.io/YOUR_NAMESPACE/guestbook:v2 --record
-kubectl set resources deployment/guestbook --requests=cpu=5m --limits=cpu=50m --record
+kubectl apply -f v1/guestbook/deployment.yml
+kubectl delete hpa guestbook
+kubectl scale deployment guestbook --replicas=1
 kubectl rollout history deployment/guestbook
-kubectl rollout undo deployment/guestbook
+kubectl rollout history deployments guestbook --revision=2
+kubectl rollout undo deployment/guestbook --to-revision=1
 kubectl get rs
 ```

@@ -46,6 +46,8 @@ jobs:
         run: |
           sed 's#us.icr.io/YOUR_NAMESPACE/guestbook:v1#guestbook:v1#' v1/guestbook/deployment.yml > /tmp/deployment.yml
           sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/' /tmp/deployment.yml
+          sed -i 's/cpu: 5m/cpu: 50m/' /tmp/deployment.yml
+          sed -i 's/cpu: 2m/cpu: 20m/' /tmp/deployment.yml
           kubectl apply -f /tmp/deployment.yml | tee 07-deployment-apply
           kubectl apply -f v1/guestbook/service.yml
           kubectl rollout status deployment/guestbook --timeout=180s
@@ -61,19 +63,31 @@ jobs:
           kubectl wait --for=jsonpath='{.status.currentReplicas}'=3 hpa/guestbook --timeout=180s
           kubectl get hpa guestbook | tee hpa2
 
-      - name: Perform rolling updates
+      - name: Apply updated v2 deployment
         run: |
-          kubectl set image deployment/guestbook guestbook=guestbook:v2 --record
+          sed 's#us.icr.io/YOUR_NAMESPACE/guestbook:v1#guestbook:v2#' v1/guestbook/deployment.yml > /tmp/deployment-v2.yml
+          sed -i 's/imagePullPolicy: Always/imagePullPolicy: IfNotPresent/' /tmp/deployment-v2.yml
+          kubectl apply -f /tmp/deployment-v2.yml | tee deployment
           kubectl rollout status deployment/guestbook --timeout=180s
-          kubectl set resources deployment/guestbook --requests=cpu=5m --limits=cpu=50m --record
-          kubectl rollout status deployment/guestbook --timeout=180s
-          kubectl rollout history deployment/guestbook | tee 09-rollout-history
 
-      - name: Roll back and list ReplicaSets
+      - name: Capture v2 application
         run: |
-          kubectl rollout undo deployment/guestbook
+          docker run -d -p 3001:3000 --name guestbook-v2 guestbook:v2
+          sleep 3
+          curl --fail http://localhost:3001
+          npx playwright screenshot --viewport-size=1440,900 http://localhost:3001 up-app.png
+
+      - name: Capture revision details and roll back
+        run: |
+          kubectl delete hpa guestbook
+          kubectl scale deployment guestbook --replicas=1
+          kubectl wait --for=jsonpath='{.status.readyReplicas}'=1 deployment/guestbook --timeout=180s
+          kubectl rollout history deployment/guestbook
+          kubectl rollout history deployments guestbook --revision=2 | tee rev
+          kubectl get rs
+          kubectl rollout undo deployment/guestbook --to-revision=1
           kubectl rollout status deployment/guestbook --timeout=180s
-          kubectl get rs | tee 10-replicasets-after-rollback
+          kubectl get rs | tee rs
 
       - name: Upload terminal evidence
         uses: actions/upload-artifact@v4
@@ -82,7 +96,8 @@ jobs:
           path: |
             hpa
             hpa2
-            07-deployment-apply
-            09-rollout-history
-            10-replicasets-after-rollback
+            deployment
+            rev
+            rs
             app.png
+            up-app.png
