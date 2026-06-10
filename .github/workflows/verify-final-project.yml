@@ -52,14 +52,14 @@ jobs:
 
       - name: Create HPA with zero current replicas
         run: |
-          kubectl apply -f v1/guestbook/hpa.yml
-          kubectl get hpa guestbook | tee 04-hpa-created
+          kubectl autoscale deployment guestbook --cpu-percent=5 --min=1 --max=10
+          kubectl get hpa guestbook | tee hpa
 
       - name: Confirm increased replicas
         run: |
           kubectl patch hpa guestbook --type=merge -p '{"spec":{"minReplicas":3}}'
           kubectl wait --for=jsonpath='{.status.currentReplicas}'=3 hpa/guestbook --timeout=180s
-          kubectl get hpa guestbook | tee 05-increased-replicas
+          kubectl get hpa guestbook | tee hpa2
 
       - name: Perform rolling updates
         run: |
@@ -80,8 +80,8 @@ jobs:
         with:
           name: guestbook-terminal-evidence
           path: |
-            04-hpa-created
-            05-increased-replicas
+            hpa
+            hpa2
             07-deployment-apply
             09-rollout-history
             10-replicasets-after-rollback

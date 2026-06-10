@@ -35,7 +35,7 @@ File: `v1/guestbook/public/index.html`
 ```sh
 kubectl apply -f v1/guestbook/deployment.yml
 kubectl apply -f v1/guestbook/service.yml
-kubectl apply -f v1/guestbook/hpa.yml
+kubectl autoscale deployment guestbook --cpu-percent=5 --min=1 --max=10
 kubectl get hpa guestbook
 ```
 
