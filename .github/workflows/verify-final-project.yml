@@ -17,6 +17,14 @@ jobs:
           docker build -t guestbook:v1 v1/guestbook
           docker build -t guestbook:v2 v2/guestbook
 
+      - name: Capture Guestbook v1 application
+        run: |
+          docker run -d -p 3000:3000 --name guestbook-app guestbook:v1
+          sleep 3
+          curl --fail http://localhost:3000
+          npx playwright install --with-deps chromium
+          npx playwright screenshot --viewport-size=1440,900 http://localhost:3000 app.png
+
       - name: Create Kind cluster
         uses: helm/kind-action@v1
         with:
@@ -77,3 +85,4 @@ jobs:
             07-deployment-apply
             09-rollout-history
             10-replicasets-after-rollback
+            app.png
